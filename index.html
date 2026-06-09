@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Object Drum Studio / 日常物件鼓机</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-status="idle" data-active-tab="setup">
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Object Drum Studio</h1>
+          <p>日常物件 · Finger Tap · Browser Drum Machine</p>
+        </div>
+        <div class="topbar__actions">
+          <span class="status"><i></i><b id="status">待启动</b></span>
+          <button id="startButton" class="primary-button" type="button">启动</button>
+        </div>
+      </header>
+
+      <section class="workbench">
+        <div class="stage-shell">
+          <div id="stage" class="stage">
+            <video id="camera" playsinline muted></video>
+            <canvas id="overlay"></canvas>
+          </div>
+          <div class="readout-strip">
+            <span>物件 <b id="padsCount">0</b></span>
+            <span>手部 <b id="handsCount">0</b></span>
+            <span>敲击信号 <b id="signal">0.000</b></span>
+          </div>
+        </div>
+
+        <aside class="panel" aria-label="Control panel">
+          <div class="panel-tabs" role="tablist" aria-label="控制面板">
+            <button class="panel-tab is-active" data-tab="setup" type="button">Setup</button>
+            <button class="panel-tab" data-tab="pads" type="button">Objects</button>
+            <button class="panel-tab" data-tab="sound" type="button">Sound</button>
+            <button class="panel-tab" data-tab="gesture" type="button">Gesture</button>
+            <button class="panel-tab" data-tab="log" type="button">Log</button>
+          </div>
+
+          <section class="panel-page is-active" data-panel-page="setup">
+            <div class="panel-section">
+              <div class="section-title">
+                <span>Camera</span>
+                <em>输入</em>
+              </div>
+              <label class="field">
+                <span>摄像头</span>
+                <select id="cameraSelect"></select>
+              </label>
+              <label class="toggle">
+                <input id="mirrorToggle" type="checkbox" />
+                <span>镜像</span>
+              </label>
+            </div>
+
+            <div class="panel-section">
+              <div class="section-title">
+                <span>Tracking</span>
+                <em>区域与触发</em>
+              </div>
+              <div class="button-grid">
+                <button id="roiButton" type="button">选择区域</button>
+                <button id="clearRoiButton" type="button">清除区域</button>
+              </div>
+              <button id="lockPadsButton" class="wide-button" type="button">进入演奏模式</button>
+              <p id="lockStatus" class="hint">调整模式：持续识别并校准物件区域</p>
+            </div>
+
+            <div class="panel-section">
+              <div class="section-title">
+                <span>Detection</span>
+                <em>全局过滤</em>
+              </div>
+              <label class="range-row">
+                <span>全局饱和</span>
+                <input id="sat" type="range" min="0.12" max="0.9" step="0.01" value="0.42" />
+                <b id="satValue">0.42</b>
+              </label>
+              <label class="range-row">
+                <span>全局亮度</span>
+                <input id="val" type="range" min="0.05" max="0.8" step="0.01" value="0.18" />
+                <b id="valValue">0.18</b>
+              </label>
+              <label class="range-row">
+                <span>最小面积</span>
+                <input id="area" type="range" min="8" max="900" step="4" value="36" />
+                <b id="areaValue">36</b>
+              </label>
+            </div>
+
+          </section>
+
+          <section class="panel-page" data-panel-page="pads">
+            <div class="section-title">
+              <span>Object Rules</span>
+              <button id="resetColorRules" type="button">重置</button>
+            </div>
+            <p id="samplingStatus" class="hint">采样：点某个音色的采样按钮，再点画面中的物件色块</p>
+            <div id="padList" class="pad-list"></div>
+            <div id="padEditor" class="pad-editor"></div>
+          </section>
+
+          <section class="panel-page" data-panel-page="sound">
+            <div class="section-title">
+              <span>Sound Kit</span>
+              <em>Sample / Tone.js</em>
+            </div>
+            <div class="panel-section sample-library">
+              <div class="section-title">
+                <span>Sample Library</span>
+                <em>Folder import</em>
+              </div>
+              <div class="sample-drop sample-drop--library">
+                <input id="sampleLibraryInput" type="file" accept="audio/*" webkitdirectory directory multiple />
+                <label for="sampleLibraryInput">导入音色文件夹</label>
+                <span id="sampleLibraryStatus">未导入音色库；也可以在下方给单个音色上传 sample。</span>
+              </div>
+            </div>
+            <div id="soundList" class="sound-list"></div>
+            <div id="soundEditor" class="sound-editor"></div>
+          </section>
+
+          <section class="panel-page" data-panel-page="gesture">
+            <div class="section-title">
+              <span>Gesture Gate</span>
+              <em>抗抖与判定</em>
+            </div>
+            <div class="gesture-meter">
+              <div>
+                <span>signal</span>
+                <b id="gestureSignal">0.000</b>
+              </div>
+              <meter id="gestureMeter" min="0" max="0.08" value="0"></meter>
+              <small id="gestureReason">idle</small>
+            </div>
+            <label class="field trigger-mode">
+              <span>Trigger Mode</span>
+              <select id="triggerMode">
+                <option value="tap">Tap / 敲击</option>
+                <option value="touch">Touch / 触碰停留</option>
+              </select>
+            </label>
+            <label class="range-row">
+              <span>敲击阈值</span>
+              <input id="tap" type="range" min="0.004" max="0.08" step="0.001" value="0.024" />
+              <b id="tapValue">0.024</b>
+            </label>
+            <label class="range-row">
+              <span>噪声门</span>
+              <input id="noiseFloor" type="range" min="0" max="0.04" step="0.001" value="0.008" />
+              <b id="noiseFloorValue">0.008</b>
+            </label>
+            <label class="range-row">
+              <span>平滑</span>
+              <input id="smoothing" type="range" min="0.15" max="1" step="0.01" value="0.42" />
+              <b id="smoothingValue">0.42</b>
+            </label>
+            <label class="range-row">
+              <span>Dwell</span>
+              <input id="dwell" type="range" min="0" max="220" step="5" value="70" />
+              <b id="dwellValue">70</b>
+            </label>
+            <label class="range-row">
+              <span>Release</span>
+              <input id="release" type="range" min="0" max="0.03" step="0.001" value="0.006" />
+              <b id="releaseValue">0.006</b>
+            </label>
+            <label class="range-row">
+              <span>Z 权重</span>
+              <input id="zWeight" type="range" min="0" max="4" step="0.1" value="1" />
+              <b id="zWeightValue">1.0</b>
+            </label>
+            <label class="range-row">
+              <span>冷却时间</span>
+              <input id="cooldown" type="range" min="35" max="320" step="5" value="150" />
+              <b id="cooldownValue">150</b>
+            </label>
+          </section>
+
+          <section class="panel-page" data-panel-page="log">
+            <div class="section-title">
+              <span>Trigger Log</span>
+              <em>最近事件</em>
+            </div>
+            <ol id="eventLog"></ol>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <canvas id="process" hidden></canvas>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
