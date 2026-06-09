@@ -1,30 +1,33 @@
 # Object Drum Studio
 
-Object Drum Studio turns everyday objects or colored blobs into playable drum zones. It runs in the browser with a webcam, MediaPipe hand tracking, color/object region tracking, Tone.js synthesis, and optional local sample uploads.
+**中文** | [English](./README.en.md)
 
-Live demo: https://electro-dig.github.io/object-drum-studio-public/
+Object Drum Studio 是一个浏览器里的日常物件鼓机：把桌面上的彩色物件、贴纸、玩具、文具或纸上色块识别成可演奏区域，再用手指触碰或敲击触发 Kick / Snare / Clap / Tom / Pad / Hi-hat 等音色。
 
-## What This Public Version Includes
+在线体验：<https://electro-dig.github.io/object-drum-studio-public/>
 
-- Webcam-based object/color region detection
-- MediaPipe hand tracking
-- Tap and touch trigger modes
-- Stabilized pad tracking and gesture gates
-- Built-in Tone.js drum sounds
-- Local sample folder import and per-instrument sample assignment
-- Pure browser runtime with no account or server setup
+## 这个公开版包含什么
 
-## Privacy
+- 摄像头实时输入与画面预览
+- MediaPipe 手部追踪
+- Touch / Tap 两种触发模式，默认 Touch
+- 物件/色块区域识别与稳定追踪
+- Objects 面板里的 H / S / V 颜色规则、画面取色、RGB/Hex 色板
+- Tone.js 内置鼓组和 Pad 音色
+- 本地 sample 文件夹导入与单个音色分配
+- 纯浏览器运行，不需要账号、后端或云服务器
 
-This public version is intentionally local-first:
+## 隐私说明
 
-- Camera frames stay in the browser.
-- Uploaded samples stay in the browser session.
-- No private cloud sound service is included.
-- No experimental remote sound-generation module is included.
-- No account, secret, or private server configuration is required.
+这个公开版是 local-first：
 
-## Run Locally
+- 摄像头画面只在浏览器里处理。
+- 上传的 sample 只保留在当前浏览器会话里。
+- 不包含私有云端音色服务。
+- 不包含实验性的远程音色生成模块。
+- 不需要任何账号、密钥或私有服务器配置。
+
+## 本地运行
 
 ```powershell
 git clone https://github.com/Electro-Dig/object-drum-studio-public.git
@@ -33,29 +36,29 @@ npm.cmd test
 npm.cmd start
 ```
 
-Then open `http://localhost:5178`.
+然后打开 `http://localhost:5178`。
 
-There is no build step; GitHub Pages serves the static files directly from the repository root.
+这个项目没有构建步骤；GitHub Pages 会直接从仓库根目录托管静态文件。
 
-## Basic Workflow
+## 基本使用流程
 
-1. Click `启动` and allow camera access.
-2. Use `Setup` to select a camera, mirror the view if needed, and optionally limit the region of interest.
-3. Use `Objects` to tune the color rules for Kick, Snare, Clap, Tom, Pad, and Hi-hat.
-4. Use `Gesture` to tune the tap threshold, noise floor, smoothing, dwell, release, and cooldown.
-5. Use `Sound` to preview built-in sounds or import a local sample folder.
-6. Enter performance mode when the detected zones are stable.
+1. 打开页面后先看“指南”面板，了解推荐顺序。
+2. 点击 `启动` 并允许摄像头权限。
+3. 在“设置”里选择摄像头，必要时打开镜像，并框选演奏区域。
+4. 在“物件”里为 Kick / Snare / Clap 等音色取色，或者打开色板手动选色。
+5. 在 `Gesture` 里调 Dwell、噪声门、冷却时间等参数，减少误触发。
+6. 在 `Sound` 里试听内置音色，或导入本地 sample 文件夹。
 
-## Tech Stack
+## 技术栈
 
 - MediaPipe Tasks Vision HandLandmarker
 - Tone.js
 - Canvas 2D
-- HSV color segmentation
-- Connected-component region extraction
-- Region tracking with smoothing and missing-frame tolerance
-- Browser `localStorage` for local color and sound settings
+- HSV 颜色分割
+- 连通区域提取
+- 跨帧区域平滑与丢失容忍
+- 浏览器 `localStorage` 保存本地颜色与音色设置
 
-## Development Notes
+## 开发说明
 
-The original research prototype explored remote sound generation. This repository removes that private/experimental layer so the public demo is safer to share, easier to remix, and suitable for community testing.
+内部研究版曾探索远程音色生成。这个公开仓库删除了那部分私有/实验层，只保留更安全、更容易体验和 fork 的浏览器版本。

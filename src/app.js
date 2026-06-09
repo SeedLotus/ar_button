@@ -23,6 +23,13 @@ import {
   createSampleLibrary,
   samplesForInstrument,
 } from "./audio/sampleLibrary.js";
+import {
+  COLOR_PANEL_PRESETS,
+  cameraFilterFromControls,
+  colorRulePatchFromHex,
+  colorRulePreviewCss,
+  normalizeHexColor,
+} from "./ui/colorControls.js";
 
 const FINGER_TIPS = {
   thumb: 4,
@@ -49,7 +56,7 @@ const HAND_CONNECTIONS = [
 
 const COLOR_RULES_STORAGE_KEY = "object-drum-studio.colorRules.v1";
 const DRUM_KIT_STORAGE_KEY = "object-drum-studio.drumKit.v1";
-const TRIGGER_MODE_STORAGE_KEY = "object-drum-studio.triggerMode.v1";
+const TRIGGER_MODE_STORAGE_KEY = "object-drum-studio.triggerMode.v2";
 const FINGER_LABELS = {
   thumb: "拇指",
   index: "食指",
@@ -163,6 +170,7 @@ state.selectedRuleId = state.colorRules[0]?.id || null;
 renderColorRules();
 renderSoundKit();
 syncControlLabels();
+applyCameraFilter();
 syncPadLockUi();
 syncTriggerModeUi();
 wireEvents();
@@ -197,7 +205,10 @@ function wireEvents() {
   });
 
   for (const input of [els.sat, els.val, els.area]) {
-    input.addEventListener("input", syncControlLabels);
+    input.addEventListener("input", () => {
+      syncControlLabels();
+      if (input === els.sat || input === els.val) applyCameraFilter();
+    });
   }
   for (const input of [
     els.tap,
@@ -377,6 +388,7 @@ function resizeOverlay() {
 function drawVideoToProcessCanvas() {
   processCtx.save();
   processCtx.clearRect(0, 0, els.process.width, els.process.height);
+  processCtx.filter = cameraFilterFromControls(readCameraFilterControls()).cssFilter;
   if (els.mirror.checked) {
     processCtx.translate(els.process.width, 0);
     processCtx.scale(-1, 1);
@@ -791,8 +803,9 @@ function updateStats() {
 }
 
 function syncControlLabels() {
-  els.satValue.textContent = Number(els.sat.value).toFixed(2);
-  els.valValue.textContent = Number(els.val.value).toFixed(2);
+  const cameraFilter = cameraFilterFromControls(readCameraFilterControls());
+  els.satValue.textContent = `${Number(els.sat.value).toFixed(2)} / ${cameraFilter.saturation.toFixed(2)}x`;
+  els.valValue.textContent = `${Number(els.val.value).toFixed(2)} / ${cameraFilter.brightness.toFixed(2)}x`;
   els.areaValue.textContent = els.area.value;
   els.tapValue.textContent = Number(els.tap.value).toFixed(3);
   els.zWeightValue.textContent = Number(els.zWeight.value).toFixed(1);
@@ -801,6 +814,17 @@ function syncControlLabels() {
   els.smoothingValue.textContent = Number(els.smoothing.value).toFixed(2);
   els.dwellValue.textContent = els.dwell.value;
   els.releaseValue.textContent = Number(els.release.value).toFixed(3);
+}
+
+function applyCameraFilter() {
+  els.stage.style.setProperty("--camera-filter", cameraFilterFromControls(readCameraFilterControls()).cssFilter);
+}
+
+function readCameraFilterControls() {
+  return {
+    saturationValue: Number(els.sat.value),
+    valueValue: Number(els.val.value),
+  };
 }
 
 function renderColorRules() {
@@ -813,12 +837,12 @@ function renderColorRules() {
     item.classList.toggle("is-active", rule.id === state.selectedRuleId);
     item.classList.toggle("is-disabled", !rule.enabled);
     item.innerHTML = `
-      <span class="swatch" style="background-color: hsl(${rule.hueCenter} 86% 55%)"></span>
+      <span class="swatch" style="background-color: ${colorRulePreviewCss(rule)}"></span>
       <span>
         <strong>${rule.label}</strong>
         <small>${rule.zhLabel || ""}</small>
       </span>
-      <b>${Math.round(rule.hueCenter)}°</b>
+      <b>H ${Math.round(rule.hueCenter)} / S ${Number(rule.minSaturation).toFixed(2)} / V ${Number(rule.minValue).toFixed(2)}</b>
     `;
     els.padList.append(item);
   }
@@ -837,7 +861,7 @@ function renderPadEditor() {
   els.padEditor.innerHTML = `
     <div class="editor-head">
       <div>
-        <span class="swatch" style="background-color: hsl(${rule.hueCenter} 86% 55%)"></span>
+        <span class="swatch" style="background-color: ${colorRulePreviewCss(rule)}"></span>
         <strong>${rule.label}</strong>
         <small>${rule.zhLabel || ""}</small>
       </div>
@@ -846,9 +870,22 @@ function renderPadEditor() {
         <span>启用</span>
       </label>
     </div>
-    <button class="sample-button wide-button" data-sample-rule="${rule.id}" type="button">${state.samplingRuleId === rule.id ? "正在取色，拖到物体亮色区域" : "取色并实时预览"}</button>
+    <div class="color-panel">
+      <div class="color-panel__head">
+        <span>颜色面板</span>
+        <button data-open-color-panel="${rule.id}" type="button">打开色板</button>
+      </div>
+      <input class="native-color-input" data-rule-color="${rule.id}" type="color" value="${ruleToHex(rule)}" aria-label="${rule.label} color picker" />
+      <div class="color-presets" aria-label="常用颜色">
+        ${COLOR_PANEL_PRESETS.map((color) => `
+          <button data-rule-preset="${color}" type="button" style="--preset-color: ${color}" aria-label="选择 ${color}"></button>
+        `).join("")}
+      </div>
+      <small>色板选择的是 RGB/Hex，系统会自动换算成 H / S / V 识别规则。</small>
+    </div>
+    <button class="sample-button wide-button" data-sample-rule="${rule.id}" type="button">${state.samplingRuleId === rule.id ? "正在取色，拖到物体亮色区域" : "从画面取色并实时预览"}</button>
     <div class="color-sample-preview" data-sampling-preview>
-      <span class="color-sample-preview__swatch" style="background-color: hsl(${rule.hueCenter} 86% 55%)"></span>
+      <span class="color-sample-preview__swatch" style="background-color: ${colorRulePreviewCss(rule)}"></span>
       <div>
         <b>等待取色</b>
         <small>按住画面拖动，松开后应用到当前乐器</small>
@@ -878,6 +915,12 @@ function renderPadEditor() {
 }
 
 function updateColorRuleFromControl(event) {
+  const colorInput = event.target.closest("[data-rule-color]");
+  if (colorInput) {
+    applyColorPanelValue(colorInput.value);
+    return;
+  }
+
   const control = event.target.closest("[data-rule-prop]");
   if (!control) return;
   const rule = findRule(els.padEditor.dataset.ruleId);
@@ -900,9 +943,34 @@ function handlePadListClick(event) {
 }
 
 function handleColorRuleClick(event) {
+  const colorButton = event.target.closest("[data-open-color-panel]");
+  if (colorButton) {
+    els.padEditor.querySelector("[data-rule-color]")?.click();
+    return;
+  }
+
+  const preset = event.target.closest("[data-rule-preset]");
+  if (preset) {
+    applyColorPanelValue(preset.dataset.rulePreset);
+    return;
+  }
+
   const sampleButton = event.target.closest("[data-sample-rule]");
   if (!sampleButton) return;
   setSamplingRule(sampleButton.dataset.sampleRule);
+}
+
+function applyColorPanelValue(hex) {
+  const rule = findRule(els.padEditor.dataset.ruleId);
+  if (!rule) return;
+  Object.assign(rule, {
+    enabled: true,
+    ...colorRulePatchFromHex(hex),
+  });
+  syncRuleEditor(rule);
+  renderPadListState();
+  saveColorRules();
+  resetPadState();
 }
 
 function beginColorSampling(event) {
@@ -957,7 +1025,7 @@ function syncRuleEditor(rule) {
     ...els.padEditor.querySelectorAll(".swatch"),
     ...els.padList.querySelectorAll(`[data-rule-id="${rule.id}"] .swatch`),
   ];
-  for (const swatch of swatches) swatch.style.backgroundColor = `hsl(${rule.hueCenter} 86% 55%)`;
+  for (const swatch of swatches) swatch.style.backgroundColor = colorRulePreviewCss(rule);
   const hueCenter = els.padEditor.querySelector('[data-rule-value="hueCenter"]');
   const hueRange = els.padEditor.querySelector('[data-rule-value="hueRange"]');
   const minSaturation = els.padEditor.querySelector('[data-rule-value="minSaturation"]');
@@ -966,6 +1034,8 @@ function syncRuleEditor(rule) {
   if (hueRange) hueRange.textContent = `±${Math.round(rule.hueRange)}`;
   if (minSaturation) minSaturation.textContent = Number(rule.minSaturation).toFixed(2);
   if (minValue) minValue.textContent = Number(rule.minValue).toFixed(2);
+  const colorInput = els.padEditor.querySelector("[data-rule-color]");
+  if (colorInput) colorInput.value = ruleToHex(rule);
 }
 
 function updateSamplingPreviewUi(rule, sample) {
@@ -988,7 +1058,7 @@ function renderPadListState() {
     item.classList.toggle("is-active", rule?.id === state.selectedRuleId);
     item.classList.toggle("is-disabled", !rule?.enabled);
     const value = item.querySelector("b");
-    if (value && rule) value.textContent = `${Math.round(rule.hueCenter)}°`;
+    if (value && rule) value.textContent = `H ${Math.round(rule.hueCenter)} / S ${Number(rule.minSaturation).toFixed(2)} / V ${Number(rule.minValue).toFixed(2)}`;
   }
 }
 
@@ -1386,9 +1456,9 @@ function feedbackRank(item) {
 
 function loadTriggerMode() {
   try {
-    return localStorage.getItem(TRIGGER_MODE_STORAGE_KEY) === "touch" ? "touch" : "tap";
+    return localStorage.getItem(TRIGGER_MODE_STORAGE_KEY) === "tap" ? "tap" : "touch";
   } catch {
-    return "tap";
+    return "touch";
   }
 }
 
@@ -1411,8 +1481,8 @@ function syncPadLockUi() {
   document.body.dataset.padMode = state.padsLocked ? "play" : "setup";
   els.lockPads.textContent = state.padsLocked ? "返回调整模式" : "进入演奏模式";
   els.lockStatus.textContent = state.padsLocked
-    ? "演奏模式：锁定已确认物件区域，减少区域抖动"
-    : "调整模式：持续识别并校准物件区域";
+    ? "演奏模式：锁定已确认物件区域，减少区域抖动。"
+    : "调整模式：持续识别并校准物件区域。";
 }
 
 function resetPadState() {
@@ -1434,6 +1504,27 @@ function clamp(value, min, max) {
 function formatSigned(value) {
   const number = Number(value);
   return number > 0 ? `+${number}` : String(number);
+}
+
+function ruleToHex(rule = {}) {
+  const hue = (((Number(rule.hueCenter) || 0) % 360) + 360) % 360;
+  const saturation = clamp(Number(rule.minSaturation || 0.5) + 0.16, 0.08, 1);
+  const lightness = clamp(Number(rule.minValue || 0.55) + 0.06, 0.16, 0.74);
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = lightness - chroma / 2;
+  const [rn, gn, bn] =
+    hue < 60 ? [chroma, x, 0] :
+    hue < 120 ? [x, chroma, 0] :
+    hue < 180 ? [0, chroma, x] :
+    hue < 240 ? [0, x, chroma] :
+    hue < 300 ? [x, 0, chroma] :
+    [chroma, 0, x];
+  return normalizeHexColor(`#${toHexByte(rn + m)}${toHexByte(gn + m)}${toHexByte(bn + m)}`);
+}
+
+function toHexByte(value) {
+  return Math.round(clamp(value, 0, 1) * 255).toString(16).padStart(2, "0");
 }
 
 function escapeHtml(value) {

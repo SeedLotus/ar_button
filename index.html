@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body data-status="idle" data-active-tab="setup">
+  <body data-status="idle" data-active-tab="guide">
     <main class="shell">
       <header class="topbar">
         <div>
@@ -29,23 +29,59 @@
           <div class="readout-strip">
             <span>物件 <b id="padsCount">0</b></span>
             <span>手部 <b id="handsCount">0</b></span>
-            <span>敲击信号 <b id="signal">0.000</b></span>
+            <span>触发信号 <b id="signal">0.000</b></span>
           </div>
         </div>
 
-        <aside class="panel" aria-label="Control panel">
+        <aside class="panel" aria-label="控制面板">
           <div class="panel-tabs" role="tablist" aria-label="控制面板">
-            <button class="panel-tab is-active" data-tab="setup" type="button">Setup</button>
-            <button class="panel-tab" data-tab="pads" type="button">Objects</button>
+            <button class="panel-tab is-active" data-tab="guide" type="button">指南</button>
+            <button class="panel-tab" data-tab="setup" type="button">设置</button>
+            <button class="panel-tab" data-tab="pads" type="button">物件</button>
             <button class="panel-tab" data-tab="sound" type="button">Sound</button>
             <button class="panel-tab" data-tab="gesture" type="button">Gesture</button>
             <button class="panel-tab" data-tab="log" type="button">Log</button>
           </div>
 
-          <section class="panel-page is-active" data-panel-page="setup">
+          <section class="panel-page is-active" data-panel-page="guide">
+            <div class="panel-section guide-section">
+              <div class="section-title">
+                <span>快速开始</span>
+                <em>建议顺序</em>
+              </div>
+              <ol class="guide-list">
+                <li>点击右上角“启动”，允许浏览器使用摄像头。</li>
+                <li>在“设置”里选择摄像头，必要时打开镜像，并框选桌面演奏区域。</li>
+                <li>在“物件”里为 Kick / Snare / Clap 等音色取色或打开色板微调。</li>
+                <li>默认使用 Touch 模式：手指停留在物件区域上会触发，适合普通摄像头。</li>
+                <li>如果误触发，优先提高 Gesture 里的冷却时间、Dwell 或噪声门。</li>
+              </ol>
+            </div>
+
+            <div class="panel-section guide-section">
+              <div class="section-title">
+                <span>按钮说明</span>
+                <em>功能速查</em>
+              </div>
+              <dl class="guide-terms">
+                <dt>选择区域</dt>
+                <dd>只识别框选范围内的物件，能减少背景误识别。</dd>
+                <dt>进入演奏模式</dt>
+                <dd>锁定已确认的物件区域，减少区域边界抖动。</dd>
+                <dt>从画面取色</dt>
+                <dd>按住画面拖到目标物件的亮色区域，松开后应用到当前音色。</dd>
+                <dt>打开色板</dt>
+                <dd>用 RGB/Hex 色板选色，系统会自动换算成 H / S / V 识别规则。</dd>
+                <dt>Sample Library</dt>
+                <dd>导入本地音色文件夹，文件不会上传，只在浏览器里使用。</dd>
+              </dl>
+            </div>
+          </section>
+
+          <section class="panel-page" data-panel-page="setup">
             <div class="panel-section">
               <div class="section-title">
-                <span>Camera</span>
+                <span>摄像头</span>
                 <em>输入</em>
               </div>
               <label class="field">
@@ -60,29 +96,29 @@
 
             <div class="panel-section">
               <div class="section-title">
-                <span>Tracking</span>
-                <em>区域与触发</em>
+                <span>区域与演奏</span>
+                <em>稳定区域</em>
               </div>
               <div class="button-grid">
                 <button id="roiButton" type="button">选择区域</button>
                 <button id="clearRoiButton" type="button">清除区域</button>
               </div>
               <button id="lockPadsButton" class="wide-button" type="button">进入演奏模式</button>
-              <p id="lockStatus" class="hint">调整模式：持续识别并校准物件区域</p>
+              <p id="lockStatus" class="hint">调整模式：持续识别并校准物件区域。</p>
             </div>
 
             <div class="panel-section">
               <div class="section-title">
-                <span>Detection</span>
-                <em>全局过滤</em>
+                <span>画面与检测</span>
+                <em>全局调节</em>
               </div>
               <label class="range-row">
-                <span>全局饱和</span>
+                <span>画面饱和</span>
                 <input id="sat" type="range" min="0.12" max="0.9" step="0.01" value="0.42" />
                 <b id="satValue">0.42</b>
               </label>
               <label class="range-row">
-                <span>全局亮度</span>
+                <span>画面亮度</span>
                 <input id="val" type="range" min="0.05" max="0.8" step="0.01" value="0.18" />
                 <b id="valValue">0.18</b>
               </label>
@@ -91,16 +127,16 @@
                 <input id="area" type="range" min="8" max="900" step="4" value="36" />
                 <b id="areaValue">36</b>
               </label>
+              <p class="hint">饱和与亮度会同时作用在摄像头预览和识别用画面上；数值越高，画面越鲜明或更亮。</p>
             </div>
-
           </section>
 
           <section class="panel-page" data-panel-page="pads">
             <div class="section-title">
-              <span>Object Rules</span>
+              <span>物件音色规则</span>
               <button id="resetColorRules" type="button">重置</button>
             </div>
-            <p id="samplingStatus" class="hint">采样：点某个音色的采样按钮，再点画面中的物件色块</p>
+            <p id="samplingStatus" class="hint">取色：选择一个音色后按“从画面取色”，拖到物件亮色区域，松开后应用。</p>
             <div id="padList" class="pad-list"></div>
             <div id="padEditor" class="pad-editor"></div>
           </section>
@@ -141,8 +177,8 @@
             <label class="field trigger-mode">
               <span>Trigger Mode</span>
               <select id="triggerMode">
-                <option value="tap">Tap / 敲击</option>
                 <option value="touch">Touch / 触碰停留</option>
+                <option value="tap">Tap / 敲击</option>
               </select>
             </label>
             <label class="range-row">

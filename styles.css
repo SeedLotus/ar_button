@@ -185,6 +185,8 @@ body[data-status="错误"] .status i {
 
 .stage video {
   object-fit: cover;
+  filter: var(--camera-filter, none);
+  transition: filter 120ms linear;
 }
 
 .stage.is-mirrored video {
@@ -241,7 +243,7 @@ body[data-status="错误"] .status i {
 
 .panel-tabs {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   border-bottom: 1px solid var(--line);
   background: rgba(219, 233, 242, 0.75);
 }
@@ -387,7 +389,7 @@ body[data-pad-mode="play"] #lockPadsButton {
 
 .range-row,
 .mini-range {
-  grid-template-columns: 74px 1fr 62px;
+  grid-template-columns: 84px 1fr 92px;
   align-items: center;
   margin-bottom: 13px;
 }
@@ -472,6 +474,7 @@ body[data-pad-mode="play"] #lockPadsButton {
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 12px;
+  text-align: right;
 }
 
 .swatch {
@@ -504,6 +507,62 @@ body[data-pad-mode="play"] #lockPadsButton {
 
 .sample-button {
   margin-bottom: 10px;
+}
+
+.color-panel {
+  display: grid;
+  gap: 9px;
+  border: 1px solid rgba(145, 170, 185, 0.72);
+  background: rgba(238, 245, 247, 0.64);
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.color-panel__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-panel__head span {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.color-panel__head button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.native-color-input {
+  width: 100%;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.color-presets {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.color-presets button {
+  min-height: 28px;
+  padding: 0;
+  border-color: rgba(36, 48, 68, 0.18);
+  background: var(--preset-color);
+}
+
+.color-panel small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .color-sample-preview {
@@ -710,6 +769,44 @@ body[data-pad-mode="play"] #lockPadsButton {
 body[data-trigger-mode="touch"] .gesture-meter {
   border-color: rgba(0, 170, 140, 0.36);
   background: rgba(198, 245, 231, 0.28);
+}
+
+.guide-section {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.guide-list {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.guide-list li::marker {
+  color: #168c77;
+  font-weight: 900;
+}
+
+.guide-terms {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+}
+
+.guide-terms dt {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.guide-terms dd {
+  margin: -5px 0 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 #eventLog {
