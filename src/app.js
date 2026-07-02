@@ -1,7 +1,7 @@
 import {
   FilesetResolver,
   HandLandmarker,
-} from "https://esm.sh/@mediapipe/tasks-vision@0.10.14";
+} from "../vendor/vision_bundle.mjs";
 
 import {
   DEFAULT_COLOR_RULES,
@@ -30,6 +30,19 @@ import {
   colorRulePreviewCss,
   normalizeHexColor,
 } from "./ui/colorControls.js";
+import { VirtualPadManager } from "./detection/virtualPadManager.js";
+import {
+  detectDeskFromRgba,
+  deskAreaFromCorners,
+  pointInPolygon,
+} from "./detection/deskDetector.js";
+import {
+  renderVirtualPadPalette,
+  virtualPadPaletteItems,
+  VIRTUAL_PAD_DEFAULTS,
+} from "./ui/virtualPadPalette.js";
+import { DeskEditor } from "./ui/deskEditor.js";
+import { logger } from "./utils/logger.js";
 
 const FINGER_TIPS = {
   thumb: 4,
@@ -57,6 +70,7 @@ const HAND_CONNECTIONS = [
 const COLOR_RULES_STORAGE_KEY = "object-drum-studio.colorRules.v1";
 const DRUM_KIT_STORAGE_KEY = "object-drum-studio.drumKit.v1";
 const TRIGGER_MODE_STORAGE_KEY = "object-drum-studio.triggerMode.v2";
+const PAD_MODE_STORAGE_KEY = "object-drum-studio.padMode.v1";
 const FINGER_LABELS = {
   thumb: "拇指",
   index: "食指",
@@ -70,7 +84,15 @@ const els = {
   overlay: document.querySelector("#overlay"),
   process: document.querySelector("#process"),
   start: document.querySelector("#startButton"),
+  // Virtual pad panel
+  padModeSelect: document.querySelector("#padModeSelect"),
+  virtualPadList: document.querySelector("#virtualPadList"),
+  deskDetectButton: document.querySelector("#deskDetectButton"),
+  deskClearButton: document.querySelector("#deskClearButton"),
+  deskDrawButton: document.querySelector("#deskDrawButton"),
+  clearVirtualPads: document.querySelector("#clearVirtualPads"),
   cameraSelect: document.querySelector("#cameraSelect"),
+  refreshCamerasButton: document.querySelector("#refreshCamerasButton"),
   mirror: document.querySelector("#mirrorToggle"),
   roiButton: document.querySelector("#roiButton"),
   clearRoi: document.querySelector("#clearRoiButton"),
@@ -116,6 +138,11 @@ const els = {
   soundEditor: document.querySelector("#soundEditor"),
   sampleLibraryInput: document.querySelector("#sampleLibraryInput"),
   sampleLibraryStatus: document.querySelector("#sampleLibraryStatus"),
+  // Log panel
+  debugLog: document.querySelector("#debugLog"),
+  logLevelFilter: document.querySelector("#logLevelFilter"),
+  exportLogButton: document.querySelector("#exportLogButton"),
+  clearLogButton: document.querySelector("#clearLogButton"),
 };
 
 const state = {
@@ -145,6 +172,16 @@ const state = {
   dragStart: null,
   lastPadScanAt: 0,
   lastFrameAt: 0,
+  // Virtual pad mode
+  padMode: loadPadMode(),
+  deskEditor: new DeskEditor(),
+  deskArea: null,
+  virtualPadManager: new VirtualPadManager({ maxPads: 12 }),
+  draggingVirtualPad: null,
+  virtualPadDragPreview: null,
+  deskDrawMode: false,
+  deskAdjustMode: false,
+  deskAreaDetected: false,
 };
 
 const processCtx = els.process.getContext("2d", { willReadFrequently: true });
@@ -173,17 +210,52 @@ syncControlLabels();
 applyCameraFilter();
 syncPadLockUi();
 syncTriggerModeUi();
+// Virtual mode init
+state.virtualPadManager.load();
+state.deskEditor.load();
+if (state.deskEditor.hasDesk()) state.deskArea = state.deskEditor.deskArea;
+renderVirtualPadPalette(els.virtualPadList, virtualPadPaletteItems());
+syncVirtualUi();
 wireEvents();
 populateCameras();
 
 function wireEvents() {
-  els.start.addEventListener("click", startDemo);
+  els.start.addEventListener("click", () => {
+    if (state.running) {
+      stopDemo();
+    } else {
+      startDemo();
+    }
+  });
   for (const tab of els.panelTabs) {
     tab.addEventListener("click", () => setActiveTab(tab.dataset.tab));
   }
   els.cameraSelect.addEventListener("change", async () => {
     if (state.running) await restartCamera();
   });
+
+  // 手动刷新摄像头设备列表
+  els.refreshCamerasButton.addEventListener("click", async () => {
+    await populateCameras();
+    logger.info("Camera", "已刷新设备列表");
+  });
+
+  // 监听设备热插拔（USB 摄像头插入/拔出）
+  if (navigator.mediaDevices?.addEventListener) {
+    navigator.mediaDevices.addEventListener("devicechange", async () => {
+      logger.info("Camera", "检测到设备变更，自动刷新列表");
+      await populateCameras();
+      // 如果当前选中的设备被拔出，运行时自动切换到其他摄像头
+      if (state.running) {
+        const currentId = els.cameraSelect.value;
+        const available = Array.from(els.cameraSelect.options).map((o) => o.value);
+        if (currentId && !available.includes(currentId)) {
+          logger.warn("Camera", "当前摄像头已断开，切换到默认设备");
+          await restartCamera();
+        }
+      }
+    });
+  }
   els.roiButton.addEventListener("click", () => {
     state.roiMode = !state.roiMode;
     els.roiButton.classList.toggle("is-active", state.roiMode);
@@ -253,24 +325,198 @@ function wireEvents() {
   els.overlay.addEventListener("pointermove", updateRoiDrag);
   els.overlay.addEventListener("pointerup", endRoiDrag);
   els.overlay.addEventListener("pointercancel", cancelRoiDrag);
+
+  // Virtual mode events
+  els.padModeSelect.addEventListener("change", () => {
+    const prev = state.padMode;
+    state.padMode = els.padModeSelect.value;
+    savePadMode();
+    syncVirtualUi();
+    resetPadState();
+    logger.info("Mode", `检测模式切换: ${prev} → ${state.padMode}`);
+    if (state.padMode === "physical") {
+      state.deskAreaDetected = false;
+      state.deskArea = null;
+    }
+  });
+
+  els.deskDetectButton.addEventListener("click", () => {
+    // 临时清除桌面区域，让下一帧自动检测（不持久化到 localStorage）
+    state.deskAreaDetected = false;
+    state.deskArea = null;
+    state.deskEditor.corners = [];
+    state.deskEditor.deskArea = null;
+    state.deskEditor.mode = "idle";
+  });
+
+  els.deskClearButton.addEventListener("click", () => {
+    state.deskEditor.clear();
+    state.deskArea = null;
+    state.deskAreaDetected = true;
+  });
+
+  els.deskDrawButton.addEventListener("click", () => {
+    state.deskDrawMode = !state.deskDrawMode;
+    els.deskDrawButton.classList.toggle("is-active", state.deskDrawMode);
+    els.stage.classList.toggle("is-desk-drawing", state.deskDrawMode);
+    if (state.deskDrawMode) {
+      state.deskAdjustMode = false;
+      state.roiMode = false;
+      els.roiButton.classList.remove("is-active");
+    }
+  });
+
+  els.clearVirtualPads.addEventListener("click", () => {
+    state.virtualPadManager.reset();
+    state.virtualPadManager.save();
+    state.pads = [];
+  });
+
+  // Log panel controls
+  els.logLevelFilter.addEventListener("change", () => renderDebugLog());
+  els.clearLogButton.addEventListener("click", () => {
+    logger.clear();
+    renderDebugLog();
+  });
+  els.exportLogButton.addEventListener("click", () => {
+    logger.exportJson("ods-log");
+  });
+
+  // Subscribe to new log entries
+  logger.subscribe((event) => {
+    if (event.type === "entry" && isLogPanelVisible()) {
+      renderDebugLog();
+    } else if (event.type === "clear") {
+      renderDebugLog();
+    }
+  });
+
+  // HTML5 drag-and-drop from palette to overlay
+  els.overlay.addEventListener("dragover", (e) => {
+    if (state.padMode !== "virtual") return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    // Show preview
+    const normPt = eventToNorm(e);
+    state.virtualPadDragPreview = {
+      x: normPt.x,
+      y: normPt.y,
+      instrumentId: e.dataTransfer.types.includes("application/x-instrument-id")
+        ? "preview"
+        : null,
+    };
+  });
+
+  els.overlay.addEventListener("dragleave", () => {
+    state.virtualPadDragPreview = null;
+  });
+
+  els.overlay.addEventListener("drop", (e) => {
+    e.preventDefault();
+    state.virtualPadDragPreview = null;
+    if (state.padMode !== "virtual") return;
+    const instrumentId = e.dataTransfer.getData("application/x-instrument-id");
+    if (!instrumentId) return;
+    const normPt = eventToNorm(e);
+    // Clamp to desk
+    if (state.deskArea && !pointInPolygon(normPt, state.deskArea.quad)) return;
+    const meta = instrumentMeta(instrumentId);
+    const vpad = state.virtualPadManager.addPad({
+      instrument: instrumentId,
+      normX: normPt.x,
+      normY: normPt.y,
+      size: VIRTUAL_PAD_DEFAULTS.size,
+      color: meta.color,
+    });
+    if (vpad) {
+      state.virtualPadManager.save();
+      state.recentHits.push({
+        x: normPt.x * els.process.width,
+        y: normPt.y * els.process.height,
+        timeMs: performance.now(),
+      });
+    }
+  });
+
+  // Palette dragstart
+  els.virtualPadList.addEventListener("dragstart", (e) => {
+    const item = e.target.closest(".vpad-item");
+    if (!item) return;
+    const instrumentId = item.dataset.instrument;
+    e.dataTransfer.setData("application/x-instrument-id", instrumentId);
+    e.dataTransfer.effectAllowed = "copy";
+  });
+
+  // Right-click to delete virtual pad
+  els.overlay.addEventListener("contextmenu", (e) => {
+    if (state.padMode !== "virtual") return;
+    e.preventDefault();
+    const normPt = eventToNorm(e);
+    const near = state.virtualPadManager.findPadNear(normPt.x, normPt.y, 0.03);
+    if (near) {
+      state.virtualPadManager.removePad(near.id);
+      state.virtualPadManager.save();
+      state.pads = state.virtualPadManager.getPads({
+        width: els.process.width,
+        height: els.process.height,
+      });
+    }
+  });
 }
 
 async function startDemo() {
+  logger.info("App", "启动流程开始");
+  logger.debug("App", "当前状态", {
+    padMode: state.padMode,
+    triggerMode: state.triggerMode,
+    colorRules: state.colorRules.length,
+    drumKit: Object.keys(state.drumKit),
+  });
   setStatus("启动中");
   els.start.disabled = true;
   try {
     await drumEngine.start();
+    logger.info("Audio", "Tone.js 音频引擎就绪");
     refreshSampleStatuses();
     renderSoundKit();
     await loadHandLandmarker();
+    logger.info("MediaPipe", "手部识别模型加载完成");
     await startCamera();
+    logger.info("Camera", "摄像头已启动",
+      { deviceId: els.cameraSelect.value, mirror: els.mirror.checked });
     state.running = true;
     setStatus("运行中");
-    els.start.textContent = "运行中";
+    els.start.textContent = "停止";
+    els.start.disabled = false;
+    els.start.classList.add("is-running");
     requestAnimationFrame(loop);
+    logger.info("App", "主循环已启动");
   } catch (error) {
+    logger.error("App", "启动失败: " + (error?.message || String(error)), {
+      name: error?.name,
+      stack: error?.stack?.split("\n").slice(0, 3),
+    });
     console.error(error);
-    setStatus("错误");
+    logger.error("App", "启动异常详情", {
+      errorName: error?.name,
+      errorMessage: error?.message?.substring(0, 200),
+    });
+    let msg = "未知错误";
+    const name = error?.name || "";
+    if (name === "NotReadableError") {
+      msg = "摄像头被其他应用占用，请关闭其他使用摄像头的程序后重试";
+    } else if (name === "NotAllowedError") {
+      msg = "未获得摄像头权限，请在浏览器设置中允许访问摄像头";
+    } else if (name === "NotFoundError") {
+      msg = "未检测到摄像头设备";
+    } else if (name === "OverconstrainedError") {
+      msg = "摄像头不支持所需分辨率，请尝试切换摄像头";
+    } else if (error?.message?.includes("WebAssembly")) {
+      msg = "MediaPipe 加载失败，请运行 python scripts/setup.py 修复依赖";
+    } else if (error?.message) {
+      msg = error.message.substring(0, 100);
+    }
+    setStatus("错误: " + msg);
     els.start.disabled = false;
     els.start.textContent = "重试";
   }
@@ -278,13 +524,15 @@ async function startDemo() {
 
 async function loadHandLandmarker() {
   if (state.handLandmarker) return;
+  logger.debug("MediaPipe", "开始加载 WASM 和手部模型...");
+  const t0 = performance.now();
   const vision = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm",
+    "./wasm",
   );
+  logger.debug("MediaPipe", `WASM 加载完成 (${(performance.now() - t0).toFixed(0)}ms)`);
   state.handLandmarker = await HandLandmarker.createFromOptions(vision, {
     baseOptions: {
-      modelAssetPath:
-        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+      modelAssetPath: "./models/hand_landmarker.task",
       delegate: "GPU",
     },
     runningMode: "VIDEO",
@@ -293,10 +541,12 @@ async function loadHandLandmarker() {
     minHandPresenceConfidence: 0.45,
     minTrackingConfidence: 0.45,
   });
+  logger.debug("MediaPipe", `HandLandmarker 创建完成 (总${(performance.now() - t0).toFixed(0)}ms)`);
 }
 
 async function populateCameras() {
   if (!navigator.mediaDevices?.enumerateDevices) return;
+  const previousId = els.cameraSelect.value;
   const devices = await navigator.mediaDevices.enumerateDevices();
   const cameras = devices.filter((device) => device.kind === "videoinput");
   els.cameraSelect.innerHTML = "";
@@ -306,11 +556,16 @@ async function populateCameras() {
     option.textContent = camera.label || `Camera ${index + 1}`;
     els.cameraSelect.append(option);
   });
+  // 保留之前选中的设备（如果仍存在）
+  if (previousId && cameras.some((c) => c.deviceId === previousId)) {
+    els.cameraSelect.value = previousId;
+  }
 }
 
 async function startCamera() {
   stopCamera();
   const deviceId = els.cameraSelect.value;
+  logger.debug("Camera", "请求摄像头权限...", { deviceId: deviceId || "default" });
   state.stream = await navigator.mediaDevices.getUserMedia({
     audio: false,
     video: {
@@ -325,6 +580,7 @@ async function startCamera() {
     els.video.onloadedmetadata = resolve;
   });
   await els.video.play();
+  logger.debug("Camera", `视频分辨率: ${els.video.videoWidth}x${els.video.videoHeight}`);
   await populateCameras();
   resizeProcessCanvas();
   resizeOverlay();
@@ -346,20 +602,90 @@ function stopCamera() {
   state.stream = null;
 }
 
+function stopDemo() {
+  logger.info("App", "停止流程开始");
+  state.running = false;
+  stopCamera();
+  logger.info("Camera", "摄像头已释放");
+  els.video.srcObject = null;
+  state.pads = [];
+  state.hands = [];
+  state.handsRaw = [];
+  state.handStates = [];
+  state.recentHits = [];
+  handStabilizer.reset();
+  tapDetector.reset();
+  tapArbiter.reset();
+  padTracker.reset();
+  drumEngine.stop();
+  logger.info("Audio", "音频引擎已停止");
+  setStatus("已停止");
+  els.start.textContent = "启动";
+  els.start.disabled = false;
+  els.start.classList.remove("is-running");
+  logger.info("App", "停止流程完成");
+}
+
 function loop(now) {
   if (!state.running) return;
   if (els.video.readyState >= 2 && els.video.videoWidth > 0) {
     state.lastFrameAt = now;
+
+    // 每 10 秒输出一次帧率统计
+    if (!state._lastFpsLogAt) state._lastFpsLogAt = now;
+    state._frameCount = (state._frameCount || 0) + 1;
+    if (now - state._lastFpsLogAt >= 10000) {
+      const elapsed = now - state._lastFpsLogAt;
+      const fps = Math.round(state._frameCount / (elapsed / 1000));
+      logger.debug("Loop", `FPS: ${fps}`, {
+        pads: state.pads.length,
+        hands: state.hands.length,
+        mode: state.padMode,
+      });
+      state._frameCount = 0;
+      state._lastFpsLogAt = now;
+    }
+
     resizeProcessCanvas();
     resizeOverlay();
     drawVideoToProcessCanvas();
     detectHands(now);
+
+    // Auto-detect desk on first frame in virtual mode
+    if (
+      state.padMode === "virtual" &&
+      !state.deskEditor.hasDesk() &&
+      !state.deskAreaDetected &&
+      els.process.width > 0
+    ) {
+      autoDetectDesk();
+      state.deskAreaDetected = true;
+    }
+
     scanPads(now);
     processTaps(now);
     drawOverlay(now);
     updateStats();
   }
   requestAnimationFrame(loop);
+}
+
+function autoDetectDesk() {
+  logger.debug("Desk", "自动检测桌面区域...");
+  const image = processCtx.getImageData(0, 0, els.process.width, els.process.height);
+  const result = detectDeskFromRgba(image.data, image.width, image.height);
+  if (result.rect) {
+    state.deskEditor.setFromRect(result.rect);
+    state.deskArea = state.deskEditor.deskArea;
+    logger.info("Desk", "自动检测到桌面区域", {
+      x: result.rect.x.toFixed(2),
+      y: result.rect.y.toFixed(2),
+      w: result.rect.width.toFixed(2),
+      h: result.rect.height.toFixed(2),
+    });
+  } else {
+    logger.warn("Desk", "未检测到明显桌面区域，可手动框选");
+  }
 }
 
 function resizeProcessCanvas() {
@@ -400,6 +726,16 @@ function drawVideoToProcessCanvas() {
 function scanPads(now) {
   if (now - state.lastPadScanAt < 80) return;
   state.lastPadScanAt = now;
+
+  // Virtual mode: pads come from VirtualPadManager
+  if (state.padMode === "virtual") {
+    state.pads = state.virtualPadManager.getPads({
+      width: els.process.width,
+      height: els.process.height,
+    });
+    return;
+  }
+
   if (state.padsLocked) {
     state.pads = padTracker.update([], now, { locked: true });
     return;
@@ -421,7 +757,9 @@ function scanPads(now) {
 
 function detectHands(now) {
   if (!state.handLandmarker) return;
+  const t0 = performance.now();
   const result = state.handLandmarker.detectForVideo(els.video, now);
+  const elapsed = performance.now() - t0;
   const mirror = els.mirror.checked;
   state.handsRaw = (result.landmarks || []).map((landmarks) =>
     landmarks.map((point) => ({
@@ -435,6 +773,15 @@ function detectHands(now) {
     height: els.overlay.height,
   });
   state.hands = state.handStates.map((hand) => hand.landmarks);
+
+  // 每 5 秒输出一次手部检测统计
+  if (!state._lastHandLogAt || now - state._lastHandLogAt > 5000) {
+    state._lastHandLogAt = now;
+    logger.debug("Hands", `检测到 ${state.handsRaw.length} 只手 (${elapsed.toFixed(1)}ms)`, {
+      activeHands: state.handStates.filter((h) => !h.held).length,
+      heldHands: state.handStates.filter((h) => h.held).length,
+    });
+  }
 }
 
 function processTaps(now) {
@@ -476,6 +823,13 @@ function processTaps(now) {
 function triggerResolvedHit(resolved, velocity, finger) {
   if (drumEngine.trigger(resolved.pad.instrument, velocity)) {
     logHit(resolved.pad, finger, resolved.signal, resolved.timeMs, drumEngine.lastSource, resolved.mode);
+    logger.debug("Trigger", `${resolved.pad.label || resolved.pad.instrument} 被触发`, {
+      finger,
+      mode: resolved.mode,
+      source: drumEngine.lastSource,
+      signal: resolved.signal?.toFixed(4),
+      velocity: velocity?.toFixed(2),
+    });
   }
 }
 
@@ -523,8 +877,16 @@ function drawOverlay(now) {
   overlayCtx.lineCap = "round";
   overlayCtx.lineJoin = "round";
 
+  // Draw desk area in virtual mode
+  if (state.deskEditor.hasDesk()) {
+    state.deskEditor.draw(overlayCtx, width, height);
+  }
+
   drawRoi(width, height);
-  for (const pad of state.pads) drawPad(pad, width, height, feedbackByPad.get(pad.id));
+  for (const pad of state.pads) {
+    if (pad.isVirtual) drawVirtualPad(pad, width, height, feedbackByPad.get(pad.id));
+    else drawPad(pad, width, height, feedbackByPad.get(pad.id));
+  }
   for (const [index, hand] of state.hands.entries()) drawHand(hand, width, height, state.handStates[index]);
   drawRecentHits(now, width, height, ratio);
   drawSamplingPreview(width, height);
@@ -577,6 +939,59 @@ function drawPad(pad, width, height, feedback = null) {
     overlayCtx.font = "700 10px ui-monospace, SFMono-Regular, Consolas, monospace";
     overlayCtx.fillStyle = "rgba(248, 246, 240, 0.96)";
     overlayCtx.fillText(feedback.state.toUpperCase(), cx, cy + 33);
+  }
+}
+
+function drawVirtualPad(pad, width, height, feedback = null) {
+  const sx = width / els.process.width;
+  const sy = height / els.process.height;
+  const cx = pad.centroid.x * sx;
+  const cy = pad.centroid.y * sy;
+  const hw = (pad.bounds.width * sx) / 2;
+  const hh = (pad.bounds.height * sy) / 2;
+  const color = `rgb(${pad.color.r} ${pad.color.g} ${pad.color.b})`;
+  const alpha = feedback?.state === "hit" ? 0.35 : 0.22;
+
+  // Filled rounded rect
+  overlayCtx.fillStyle = `rgb(${pad.color.r} ${pad.color.g} ${pad.color.b} / ${alpha})`;
+  overlayCtx.strokeStyle = color;
+  overlayCtx.lineWidth = feedback ? 3 : 2;
+  overlayCtx.setLineDash([5, 3]);
+  overlayCtx.beginPath();
+  const r = 6;
+  overlayCtx.moveTo(cx - hw + r, cy - hh);
+  overlayCtx.lineTo(cx + hw - r, cy - hh);
+  overlayCtx.arcTo(cx + hw, cy - hh, cx + hw, cy - hh + r, r);
+  overlayCtx.lineTo(cx + hw, cy + hh - r);
+  overlayCtx.arcTo(cx + hw, cy + hh, cx + hw - r, cy + hh, r);
+  overlayCtx.lineTo(cx - hw + r, cy + hh);
+  overlayCtx.arcTo(cx - hw, cy + hh, cx - hw, cy + hh - r, r);
+  overlayCtx.lineTo(cx - hw, cy - hh + r);
+  overlayCtx.arcTo(cx - hw, cy - hh, cx - hw + r, cy - hh, r);
+  overlayCtx.closePath();
+  overlayCtx.fill();
+  overlayCtx.stroke();
+  overlayCtx.setLineDash([]);
+
+  // Label
+  overlayCtx.fillStyle = "#f8f6f0";
+  overlayCtx.font = '700 13px "Source Han Sans SC", "Noto Sans SC", sans-serif';
+  overlayCtx.textAlign = "center";
+  overlayCtx.textBaseline = "middle";
+  overlayCtx.shadowColor = "rgba(0,0,0,0.5)";
+  overlayCtx.shadowBlur = 3;
+  overlayCtx.fillText(pad.label, cx, cy);
+  overlayCtx.shadowBlur = 0;
+
+  // Feedback state text
+  if (feedback) {
+    overlayCtx.font = "11px monospace";
+    overlayCtx.fillStyle = "rgba(255,255,255,0.9)";
+    overlayCtx.fillText(
+      feedback.state === "hit" ? "HIT" : feedback.state?.toUpperCase() || "",
+      cx,
+      cy + hh + 14
+    );
   }
 }
 
@@ -689,6 +1104,36 @@ function beginRoiDrag(event) {
     beginColorSampling(event);
     return;
   }
+
+  // Virtual pad drag
+  if (state.padMode === "virtual") {
+    const normPt = eventToNorm(event);
+    const near = state.virtualPadManager.findPadNear(normPt.x, normPt.y, 0.03);
+    if (near) {
+      state.draggingVirtualPad = near.id;
+      els.overlay.setPointerCapture(event.pointerId);
+      return;
+    }
+  }
+
+  // Desk draw mode
+  if (state.deskDrawMode) {
+    els.overlay.setPointerCapture(event.pointerId);
+    state.deskEditor.beginDraw(eventToNorm(event));
+    return;
+  }
+
+  // Desk adjust mode
+  if (state.deskEditor.hasDesk() && !state.deskDrawMode) {
+    const normPt = eventToNorm(event);
+    state.deskEditor.beginAdjust(normPt);
+    if (state.deskEditor.mode === "adjusting") {
+      els.overlay.setPointerCapture(event.pointerId);
+      state.deskAdjustMode = true;
+      return;
+    }
+  }
+
   if (!state.roiMode) return;
   els.overlay.setPointerCapture(event.pointerId);
   const point = eventToNorm(event);
@@ -701,6 +1146,26 @@ function updateRoiDrag(event) {
     updateColorSamplingPreview(event);
     return;
   }
+
+  // Virtual pad dragging
+  if (state.draggingVirtualPad) {
+    const normPt = eventToNorm(event);
+    state.virtualPadManager.movePad(state.draggingVirtualPad, normPt.x, normPt.y);
+    return;
+  }
+
+  // Desk drawing
+  if (state.deskEditor.mode === "drawing") {
+    state.deskEditor.updateDraw(eventToNorm(event));
+    return;
+  }
+
+  // Desk corner adjusting
+  if (state.deskAdjustMode && state.deskEditor.mode === "adjusting") {
+    state.deskEditor.updateAdjust(eventToNorm(event));
+    return;
+  }
+
   if (!state.dragStart || !state.roiMode) return;
   const point = eventToNorm(event);
   state.roiDraft = rectFromPoints(state.dragStart, point);
@@ -711,6 +1176,33 @@ function endRoiDrag(event) {
     commitColorSample(event);
     return;
   }
+
+  // Virtual pad drop
+  if (state.draggingVirtualPad) {
+    state.virtualPadManager.save();
+    state.draggingVirtualPad = null;
+    return;
+  }
+
+  // Desk draw end
+  if (state.deskEditor.mode === "drawing") {
+    state.deskEditor.endDraw(eventToNorm(event));
+    state.deskArea = state.deskEditor.deskArea;
+    state.deskAreaDetected = true;
+    state.deskDrawMode = false;
+    els.deskDrawButton.classList.remove("is-active");
+    els.stage.classList.remove("is-desk-drawing");
+    return;
+  }
+
+  // Desk adjust end
+  if (state.deskAdjustMode && state.deskEditor.mode === "adjusting") {
+    state.deskEditor.endAdjust();
+    state.deskArea = state.deskEditor.deskArea;
+    state.deskAdjustMode = false;
+    return;
+  }
+
   if (!state.dragStart || !state.roiMode) return;
   const point = eventToNorm(event);
   const roi = rectFromPoints(state.dragStart, point);
@@ -725,6 +1217,15 @@ function cancelRoiDrag() {
   if (state.samplingRuleId) {
     state.samplingPreview = null;
     updateSamplingStatus();
+    return;
+  }
+  if (state.draggingVirtualPad) {
+    state.draggingVirtualPad = null;
+    return;
+  }
+  if (state.deskEditor.mode === "drawing" || state.deskAdjustMode) {
+    state.deskEditor.mode = "idle";
+    state.deskAdjustMode = false;
     return;
   }
   state.roiDraft = null;
@@ -771,6 +1272,37 @@ function logHit(pad, finger, signal, timeMs, source = "synth", mode = "tap") {
   entry.innerHTML = `<span>${pad.label || pad.instrument}</span><b>${source} · ${mode} · ${FINGER_LABELS[finger] || finger}</b><em>${signal.toFixed(3)}</em>`;
   els.eventLog.prepend(entry);
   while (els.eventLog.children.length > 7) els.eventLog.lastElementChild.remove();
+}
+
+function isLogPanelVisible() {
+  return document.body.dataset.activeTab === "log" && els.debugLog?.isConnected;
+}
+
+function renderDebugLog() {
+  if (!els.debugLog) return;
+  const level = els.logLevelFilter?.value || "ALL";
+  const entries =
+    level === "ALL"
+      ? logger.entries()
+      : logger.entries(level);
+
+  const fragment = document.createDocumentFragment();
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    const li = document.createElement("li");
+    const lvl = e.level.toLowerCase();
+    li.className = `is-${lvl}`;
+    const time = e.iso?.slice(11, 23) || new Date(e.ts).toISOString().slice(11, 23);
+    const src = escapeHtml(String(e.source || ""));
+    const msg = escapeHtml(String(e.message || ""));
+    const dataStr = e.data
+      ? ` <em>${escapeHtml(typeof e.data === "string" ? e.data : JSON.stringify(e.data))}</em>`
+      : "";
+    li.innerHTML = `<span class="log-level">${e.level}</span><span class="log-body"><b>${src}</b> <small>${time}</small>${msg ? " " + msg : ""}${dataStr}</span>`;
+    fragment.appendChild(li);
+  }
+  els.debugLog.innerHTML = "";
+  els.debugLog.appendChild(fragment);
 }
 
 function updateStats() {
@@ -1398,6 +1930,8 @@ function setActiveTab(tabName) {
   for (const page of els.panelPages) {
     page.classList.toggle("is-active", page.dataset.panelPage === tabName);
   }
+  // 切换到 Log 标签时刷新日志视图
+  if (tabName === "log") renderDebugLog();
 }
 
 function readTapOptions() {
@@ -1464,6 +1998,35 @@ function loadTriggerMode() {
 
 function saveTriggerMode() {
   localStorage.setItem(TRIGGER_MODE_STORAGE_KEY, state.triggerMode);
+}
+
+function loadPadMode() {
+  try {
+    const v = localStorage.getItem(PAD_MODE_STORAGE_KEY);
+    return v === "virtual" ? "virtual" : "physical";
+  } catch {
+    return "physical";
+  }
+}
+
+function savePadMode() {
+  localStorage.setItem(PAD_MODE_STORAGE_KEY, state.padMode);
+}
+
+function syncVirtualUi() {
+  const isVirtual = state.padMode === "virtual";
+  els.padModeSelect.value = state.padMode;
+  document.body.dataset.detectionMode = state.padMode;
+  els.virtualPadList.style.display = isVirtual ? "" : "none";
+  els.deskDetectButton.style.display = isVirtual ? "" : "none";
+  els.deskClearButton.style.display = isVirtual ? "" : "none";
+  els.deskDrawButton.style.display = isVirtual ? "" : "none";
+  els.clearVirtualPads.style.display = isVirtual ? "" : "none";
+  // Show/hide physical pad editor
+  const physicalSection = document.querySelector('[data-panel-page="pads"]');
+  if (physicalSection) {
+    physicalSection.style.display = isVirtual ? "none" : "";
+  }
 }
 
 function syncTriggerModeUi() {

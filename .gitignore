@@ -6,3 +6,12 @@ server-*.log
 tmp-smoke-samples*/
 
 object-drum-studio-*.png
+
+# MediaPipe local dependencies (large binaries, use `python scripts/setup.py` to download)
+vendor/
+wasm/
+models/
+
+# Electron runtime (downloaded separately via mirror)
+electron-dist/
+node_modules/

@@ -15,6 +15,8 @@
   --green: #41cfae;
   --blue: #4baed8;
   --magenta: #b56ae8;
+  --accent: #4a90d9;
+  --text: #222;
   --shadow: 0 18px 42px rgba(73, 95, 118, 0.12);
   --radius: 8px;
   font-family:
@@ -142,6 +144,13 @@ body[data-status="错误"] .status i {
   color: #273042;
   border-color: #cfbea3;
   min-width: 78px;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.primary-button.is-running {
+  background: #e83e4b;
+  color: #fff;
+  border-color: #c92d39;
 }
 
 .workbench {
@@ -243,7 +252,7 @@ body[data-status="错误"] .status i {
 
 .panel-tabs {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   border-bottom: 1px solid var(--line);
   background: rgba(219, 233, 242, 0.75);
 }
@@ -844,6 +853,105 @@ body[data-trigger-mode="touch"] .gesture-meter {
   font-style: normal;
 }
 
+/* ---- Debug Log ---- */
+
+.log-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.log-toolbar button {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 11px;
+}
+
+.debug-log {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 340px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.debug-log li {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 6px;
+  border-radius: 3px;
+  border-left: 3px solid transparent;
+}
+
+.debug-log li.is-debug {
+  color: #65728a;
+  border-left-color: #91aab9;
+}
+
+.debug-log li.is-info {
+  color: #253044;
+  border-left-color: #4baed8;
+  background: rgba(218, 241, 251, 0.28);
+}
+
+.debug-log li.is-warn {
+  color: #7a6200;
+  border-left-color: #f2c84b;
+  background: rgba(255, 243, 205, 0.32);
+}
+
+.debug-log li.is-error {
+  color: #a01520;
+  border-left-color: #f05d67;
+  background: rgba(254, 226, 226, 0.38);
+}
+
+.debug-log .log-level {
+  font-weight: 900;
+  font-size: 10px;
+  text-align: right;
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
+
+.debug-log .log-body {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-log .log-body b {
+  font-weight: 900;
+}
+
+.debug-log .log-body em {
+  color: #087da8;
+  font-style: normal;
+}
+
+.debug-log .log-body small {
+  color: #91aab9;
+  font-size: 10px;
+}
+
+.debug-log::-webkit-scrollbar {
+  width: 5px;
+}
+
+.debug-log::-webkit-scrollbar-thumb {
+  background: rgba(145, 170, 185, 0.3);
+  border-radius: 3px;
+}
+
 @media (max-width: 1080px) {
   .shell {
     width: min(100vw - 20px, 820px);
@@ -878,4 +986,65 @@ body[data-trigger-mode="touch"] .gesture-meter {
   .panel-page {
     max-height: 68vh;
   }
+}
+
+/* ---- Virtual Pad Palette ---- */
+.virtual-pad-palette {
+  display: grid;
+  gap: 8px;
+}
+
+.vpad-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: grab;
+  user-select: none;
+  transition: box-shadow 0.15s;
+}
+
+.vpad-item:hover {
+  box-shadow: 0 0 0 2px var(--accent, #4a90d9);
+}
+
+.vpad-item:active {
+  cursor: grabbing;
+  box-shadow: 0 0 0 3px var(--accent, #4a90d9);
+}
+
+.vpad-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+}
+
+.vpad-label strong {
+  display: block;
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--text, #222);
+}
+
+.vpad-label small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Desk area interaction cursors */
+.stage.is-desk-drawing {
+  cursor: crosshair;
+}
+
+.stage.is-desk-adjusting {
+  cursor: move;
 }

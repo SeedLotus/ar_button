@@ -38,6 +38,7 @@
             <button class="panel-tab is-active" data-tab="guide" type="button">指南</button>
             <button class="panel-tab" data-tab="setup" type="button">设置</button>
             <button class="panel-tab" data-tab="pads" type="button">物件</button>
+            <button class="panel-tab" data-tab="virtual" type="button">Virtual</button>
             <button class="panel-tab" data-tab="sound" type="button">Sound</button>
             <button class="panel-tab" data-tab="gesture" type="button">Gesture</button>
             <button class="panel-tab" data-tab="log" type="button">Log</button>
@@ -88,6 +89,7 @@
                 <span>摄像头</span>
                 <select id="cameraSelect"></select>
               </label>
+              <button id="refreshCamerasButton" class="wide-button" type="button" title="检测新插入的摄像头设备">刷新设备列表</button>
               <label class="toggle">
                 <input id="mirrorToggle" type="checkbox" />
                 <span>镜像</span>
@@ -139,6 +141,44 @@
             <p id="samplingStatus" class="hint">取色：选择一个音色后按“从画面取色”，拖到物件亮色区域，松开后应用。</p>
             <div id="padList" class="pad-list"></div>
             <div id="padEditor" class="pad-editor"></div>
+          </section>
+
+          <section class="panel-page" data-panel-page="virtual">
+            <div class="panel-section">
+              <div class="section-title">
+                <span>检测模式</span>
+                <em>实物 / 虚拟</em>
+              </div>
+              <label class="field">
+                <span>模式</span>
+                <select id="padModeSelect">
+                  <option value="physical">实物物件</option>
+                  <option value="virtual">虚拟打击垫</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="panel-section">
+              <div class="section-title">
+                <span>桌面区域</span>
+                <em>演奏范围</em>
+              </div>
+              <div class="button-grid">
+                <button id="deskDetectButton" type="button">自动检测</button>
+                <button id="deskClearButton" type="button">清除</button>
+              </div>
+              <button id="deskDrawButton" class="wide-button" type="button">手动框选桌面</button>
+              <p class="hint">自动检测会在画面下半部分寻找平坦桌面。框选或拖动四角可手动调整。</p>
+            </div>
+
+            <div class="panel-section">
+              <div class="section-title">
+                <span>虚拟打击垫</span>
+                <button id="clearVirtualPads" type="button">清除全部</button>
+              </div>
+              <p class="hint">拖拽下方打击垫到画面桌面区域放置。按住已放置的打击垫可拖拽移动，右键删除。</p>
+              <div id="virtualPadList" class="virtual-pad-palette"></div>
+            </div>
           </section>
 
           <section class="panel-page" data-panel-page="sound">
@@ -219,9 +259,30 @@
           </section>
 
           <section class="panel-page" data-panel-page="log">
-            <div class="section-title">
-              <span>Trigger Log</span>
-              <em>最近事件</em>
+            <div class="panel-section">
+              <div class="section-title">
+                <span>系统日志</span>
+                <em>开发调试</em>
+              </div>
+              <div class="log-toolbar">
+                <label class="field" style="width:auto;display:inline-grid;margin:0 8px 0 0;">
+                  <span>级别</span>
+                  <select id="logLevelFilter" style="width:auto;min-width:90px;">
+                    <option value="ALL">全部</option>
+                    <option value="DEBUG">DEBUG</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARN">WARN</option>
+                    <option value="ERROR">ERROR</option>
+                  </select>
+                </label>
+                <button id="exportLogButton" type="button" title="导出 JSON">导出</button>
+                <button id="clearLogButton" type="button" title="清空日志">清空</button>
+              </div>
+            </div>
+            <ol id="debugLog" class="debug-log"></ol>
+            <div class="section-title" style="margin-top:14px;">
+              <span>触发事件</span>
+              <em>最近击打</em>
             </div>
             <ol id="eventLog"></ol>
           </section>

@@ -200,6 +200,32 @@ export class DrumEngine {
   preview(instrument) {
     return this.trigger(instrument, 0.9, { force: true });
   }
+
+  stop() {
+    this.ready = false;
+    try {
+      // Dispose sample players
+      for (const player of this.samplePlayers.values()) {
+        try { player.dispose(); } catch {}
+      }
+      this.samplePlayers.clear();
+      // Dispose audio nodes
+      [
+        this.limiter, this.bus, this.parallel, this.reverb, this.softClip,
+        this.kick, this.kickClick, this.snare, this.snareBody,
+        this.hihat, this.pad, this.clap, this.tom,
+      ].forEach((node) => {
+        if (node) { try { node.dispose(); } catch {} }
+      });
+      this.limiter = this.bus = this.parallel = this.reverb = this.softClip = null;
+      this.kick = this.kickClick = this.snare = this.snareBody = null;
+      this.hihat = this.pad = this.clap = this.tom = null;
+      // Suspend Tone.js audio context
+      try { Tone.getContext().rawContext?.suspend(); } catch {}
+    } catch {
+      // Ignore disposal errors
+    }
+  }
 }
 
 function waitForLoaded(player, timeoutMs) {

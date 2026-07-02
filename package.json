@@ -1,10 +1,16 @@
 {
   "name": "object-drum-studio-public",
   "version": "0.1.0",
-  "private": false,
+  "private": true,
   "type": "module",
+  "main": "main.cjs",
   "scripts": {
+    "setup": "python scripts/setup.py",
     "test": "node --test tests/*.test.js",
-    "start": "python scripts/no-cache-server.py 5178"
+    "start": "node_modules\\electron\\dist\\electron.exe .",
+    "dev": "python scripts/no-cache-server.py 5178"
+  },
+  "devDependencies": {
+    "electron": "^39.8.10"
   }
 }
