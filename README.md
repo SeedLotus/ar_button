@@ -2,6 +2,8 @@
 
 **中文** | [English](./README.en.md)
 
+> 本项目基于 [object-drum-studio-public](https://github.com/Electro-Dig/object-drum-studio-public) 迭代而来。原项目是一个开源的浏览器演示，可将桌面上的日常物件识别为可演奏的鼓区。
+
 Object Drum Studio 是一个浏览器里的日常物件鼓机：把桌面上的彩色物件、贴纸、玩具、文具或纸上色块识别成可演奏区域，再用手指触碰或敲击触发 Kick / Snare / Clap / Tom / Pad / Hi-hat 等音色。它也支持不依赖实体物件的「虚拟打击垫」模式，在摄像头画面里直接摆放可演奏的虚拟垫。
 
 在线体验：<https://electro-dig.github.io/object-drum-studio-public/>

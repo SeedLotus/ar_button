@@ -2,6 +2,8 @@
 
 [中文](./README.md) | **English**
 
+> This project is built on top of [object-drum-studio-public](https://github.com/Electro-Dig/object-drum-studio-public), an open-source browser demo for turning everyday objects into playable drum zones.
+
 Object Drum Studio turns everyday objects, stickers, toys, stationery, or colored blobs into playable drum zones. Point a webcam at your desk, tune the object colors, then trigger Kick / Snare / Clap / Tom / Pad / Hi-hat with finger touches or taps. It also supports a "Virtual Pads" mode that does not rely on physical objects — place virtual pads directly on the camera feed and play them.
 
 Live demo: <https://electro-dig.github.io/object-drum-studio-public/>
