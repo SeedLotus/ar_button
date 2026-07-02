@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Object Drum Studio
 
 **中文** | [English](./README.en.md)
@@ -81,3 +82,7 @@ object-drum-studio-public/
 ## 开发说明
 
 内部研究版曾探索远程音色生成。这个公开仓库删除了那部分私有/实验层，只保留更安全、更容易体验和 fork 的浏览器版本。
+=======
+# ar_button
+由object-drum-studio-public迭代而来的虚拟按键
+>>>>>>> 67600a0a0e5a9f51bf3ca884720180174223ec2a
