@@ -2,9 +2,13 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# Runtime logs
+*.log
 server-*.log
 tmp-smoke-samples*/
 
+# OS / IDE artifacts
+*.lnk
 object-drum-studio-*.png
 
 # MediaPipe local dependencies (large binaries, use `python scripts/setup.py` to download)
@@ -14,4 +18,3 @@ models/
 
 # Electron runtime (downloaded separately via mirror)
 electron-dist/
-node_modules/

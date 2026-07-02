@@ -49,6 +49,25 @@ npm.cmd start
 5. 在 `Gesture` 里调 Dwell、噪声门、冷却时间等参数，减少误触发。
 6. 在 `Sound` 里试听内置音色，或导入本地 sample 文件夹。
 
+## 目录结构
+
+```
+object-drum-studio-public/
+├── index.html              # 主页面
+├── main.cjs                # Electron 入口
+├── styles.css              # 样式
+├── src/                    # 源码
+│   ├── app.js              # 应用入口
+│   ├── audio/              # 音频与鼓组配置
+│   ├── detection/          # 颜色分割、手部稳定、敲击检测
+│   └── ui/                 # UI 控件
+├── tests/                  # 单元测试
+├── scripts/                # 本地工具脚本
+├── models/                 # MediaPipe 模型文件
+├── vendor/                 # MediaPipe 打包脚本
+└── wasm/                   # MediaPipe WASM 运行时
+```
+
 ## 技术栈
 
 - MediaPipe Tasks Vision HandLandmarker
